@@ -4,21 +4,17 @@ import { useState, useEffect } from "react";
 import type { Case } from "@/lib/types";
 import CaseWorkspace from "./CaseWorkspace";
 import { StatusBadge, ViabilityBadge } from "./StatusBadge";
+import { listCases } from "@/lib/clientStore";
 
 export default function LawyerDashboard() {
   const [cases, setCases] = useState<Case[]>([]);
   const [activeCaseId, setActiveCaseId] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>("all");
 
-  const fetchCases = async () => {
-    const res = await fetch("/api/cases");
-    if (res.ok) setCases(await res.json());
-  };
+  const refresh = () => setCases(listCases());
 
   useEffect(() => {
-    fetchCases();
-    const interval = setInterval(fetchCases, 5000);
-    return () => clearInterval(interval);
+    refresh();
   }, []);
 
   if (activeCaseId) {
@@ -28,7 +24,7 @@ export default function LawyerDashboard() {
         role="lawyer"
         onBack={() => {
           setActiveCaseId(null);
-          fetchCases();
+          refresh();
         }}
       />
     );
@@ -99,7 +95,8 @@ export default function LawyerDashboard() {
       {filterStatus !== "all" && (
         <div className="mb-4 flex items-center gap-2">
           <span className="text-sm text-gray-400">
-            Filtering by: <strong className="text-gray-600">{filterStatus}</strong>
+            Filtering by:{" "}
+            <strong className="text-gray-600">{filterStatus}</strong>
           </span>
           <button
             onClick={() => setFilterStatus("all")}

@@ -1,41 +1,49 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import type { Document } from "@/lib/types";
+import { listDocuments, addDocument, getFileUrl } from "@/lib/clientStore";
 
-const TAG_OPTIONS = ["contract", "evidence", "correspondence", "medical", "financial", "other"];
+const TAG_OPTIONS = [
+  "contract",
+  "evidence",
+  "correspondence",
+  "medical",
+  "financial",
+  "other",
+];
 
 export default function DocumentPanel({ caseId }: { caseId: string }) {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [uploading, setUploading] = useState(false);
   const [selectedTag, setSelectedTag] = useState("other");
 
-  const fetchDocs = useCallback(async () => {
-    const res = await fetch(`/api/cases/${caseId}/documents`);
-    if (res.ok) setDocuments(await res.json());
-  }, [caseId]);
+  const refresh = () => setDocuments(listDocuments(caseId));
 
   useEffect(() => {
-    fetchDocs();
-  }, [fetchDocs]);
+    refresh();
+  }, [caseId]);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setUploading(true);
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("tag", selectedTag);
-
     try {
-      const res = await fetch(`/api/cases/${caseId}/documents`, {
-        method: "POST",
-        body: formData,
+      const dataUrl = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (ev) => resolve(ev.target!.result as string);
+        reader.readAsDataURL(file);
       });
-      if (res.ok) {
-        fetchDocs();
-      }
+
+      addDocument(caseId, {
+        original_name: file.name,
+        mime_type: file.type || "application/octet-stream",
+        size: file.size,
+        tag: selectedTag,
+        dataUrl,
+      });
+      refresh();
     } finally {
       setUploading(false);
       e.target.value = "";
@@ -52,7 +60,8 @@ export default function DocumentPanel({ caseId }: { caseId: string }) {
     if (mimeType.startsWith("image/")) return "🖼️";
     if (mimeType === "application/pdf") return "📄";
     if (mimeType.includes("word")) return "📝";
-    if (mimeType.includes("spreadsheet") || mimeType.includes("excel")) return "📊";
+    if (mimeType.includes("spreadsheet") || mimeType.includes("excel"))
+      return "📊";
     return "📎";
   };
 
@@ -83,7 +92,7 @@ export default function DocumentPanel({ caseId }: { caseId: string }) {
           </label>
         </div>
         <p className="text-xs text-gray-400">
-          PDFs, images, documents — max 10MB
+          PDFs, images, documents — stored locally in your browser
         </p>
       </div>
 
@@ -102,9 +111,8 @@ export default function DocumentPanel({ caseId }: { caseId: string }) {
               <span className="text-lg">{getFileIcon(doc.mime_type)}</span>
               <div className="flex-1 min-w-0">
                 <a
-                  href={`/api/upload/${doc.filename}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                  href={getFileUrl(doc.id)}
+                  download={doc.original_name}
                   className="text-sm font-medium text-gray-700 hover:text-blue-600 truncate block"
                 >
                   {doc.original_name}

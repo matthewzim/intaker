@@ -1,46 +1,34 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import type { UserRole } from "@/lib/types";
 import type { Case } from "@/lib/types";
 import CaseWorkspace from "./CaseWorkspace";
 import { StatusBadge } from "./StatusBadge";
+import { listCases, createCase } from "@/lib/clientStore";
 
 export default function ClientDashboard() {
   const [cases, setCases] = useState<Case[]>([]);
   const [activeCaseId, setActiveCaseId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
-  const fetchCases = async () => {
-    const res = await fetch("/api/cases");
-    if (res.ok) setCases(await res.json());
-  };
+  const refresh = () => setCases(listCases());
 
   useEffect(() => {
-    fetchCases();
+    refresh();
   }, []);
 
-  const createCase = async () => {
+  const handleCreate = () => {
     setCreating(true);
     try {
-      const res = await fetch("/api/cases", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          client_name: "Client",
-          title: "New Case",
-        }),
-      });
-      if (res.ok) {
-        const newCase = await res.json();
-        setCases((prev) => [newCase, ...prev]);
-        setActiveCaseId(newCase.id);
-      }
+      const newCase = createCase({ client_name: "Client", title: "New Case" });
+      setCases(listCases());
+      setActiveCaseId(newCase.id);
     } finally {
       setCreating(false);
     }
   };
 
-  // Show workspace if a case is selected
   if (activeCaseId) {
     return (
       <CaseWorkspace
@@ -48,7 +36,7 @@ export default function ClientDashboard() {
         role="client"
         onBack={() => {
           setActiveCaseId(null);
-          fetchCases();
+          refresh();
         }}
       />
     );
@@ -64,7 +52,7 @@ export default function ClientDashboard() {
           </p>
         </div>
         <button
-          onClick={createCase}
+          onClick={handleCreate}
           disabled={creating}
           className="bg-blue-600 text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
         >
@@ -83,7 +71,7 @@ export default function ClientDashboard() {
             through the intake process.
           </p>
           <button
-            onClick={createCase}
+            onClick={handleCreate}
             disabled={creating}
             className="bg-blue-600 text-white px-6 py-3 rounded-xl font-medium hover:bg-blue-700 transition-colors"
           >

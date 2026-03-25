@@ -6,6 +6,7 @@ import ChatPanel from "./ChatPanel";
 import DocumentPanel from "./DocumentPanel";
 import CaseSummary from "./CaseSummary";
 import { StatusBadge } from "./StatusBadge";
+import { getCase, updateCase, analyzeCase } from "@/lib/clientStore";
 
 interface CaseWorkspaceProps {
   caseId: string;
@@ -13,39 +14,42 @@ interface CaseWorkspaceProps {
   onBack: () => void;
 }
 
-const STATUS_OPTIONS: CaseStatus[] = ["new", "reviewing", "accepted", "rejected"];
+const STATUS_OPTIONS: CaseStatus[] = [
+  "new",
+  "reviewing",
+  "accepted",
+  "rejected",
+];
 
-export default function CaseWorkspace({ caseId, role, onBack }: CaseWorkspaceProps) {
+export default function CaseWorkspace({
+  caseId,
+  role,
+  onBack,
+}: CaseWorkspaceProps) {
   const [caseData, setCaseData] = useState<Case | null>(null);
   const [activeTab, setActiveTab] = useState<"chat" | "documents">("chat");
   const [rightTab, setRightTab] = useState<"summary" | "documents">("summary");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
-  const fetchCase = useCallback(async () => {
-    const res = await fetch(`/api/cases/${caseId}`);
-    if (res.ok) setCaseData(await res.json());
+  const refresh = useCallback(() => {
+    const c = getCase(caseId);
+    if (c) setCaseData(c);
   }, [caseId]);
 
   useEffect(() => {
-    fetchCase();
-    const interval = setInterval(fetchCase, 5000);
-    return () => clearInterval(interval);
-  }, [fetchCase]);
+    refresh();
+  }, [refresh]);
 
-  const updateStatus = async (status: CaseStatus) => {
-    const res = await fetch(`/api/cases/${caseId}/status`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
-    });
-    if (res.ok) setCaseData(await res.json());
+  const handleStatusChange = (status: CaseStatus) => {
+    const updated = updateCase(caseId, { status });
+    setCaseData(updated);
   };
 
-  const runAnalysis = async () => {
+  const runAnalysis = () => {
     setIsAnalyzing(true);
     try {
-      const res = await fetch(`/api/cases/${caseId}/analyze`, { method: "POST" });
-      if (res.ok) setCaseData(await res.json());
+      const updated = analyzeCase(caseId);
+      setCaseData(updated);
     } finally {
       setIsAnalyzing(false);
     }
@@ -73,7 +77,9 @@ export default function CaseWorkspace({ caseId, role, onBack }: CaseWorkspacePro
           >
             ← Back
           </button>
-          <h2 className="font-semibold text-gray-800 flex-1">{caseData.title}</h2>
+          <h2 className="font-semibold text-gray-800 flex-1">
+            {caseData.title}
+          </h2>
           <StatusBadge status={caseData.status} />
         </div>
 
@@ -101,7 +107,7 @@ export default function CaseWorkspace({ caseId, role, onBack }: CaseWorkspacePro
               caseId={caseId}
               sender={senderType}
               enableAutoAnalysis
-              onAnalysisComplete={fetchCase}
+              onAnalysisComplete={refresh}
             />
           ) : (
             <DocumentPanel caseId={caseId} />
@@ -125,7 +131,7 @@ export default function CaseWorkspace({ caseId, role, onBack }: CaseWorkspacePro
         <h2 className="font-semibold text-gray-800 flex-1">{caseData.title}</h2>
         <select
           value={caseData.status}
-          onChange={(e) => updateStatus(e.target.value as CaseStatus)}
+          onChange={(e) => handleStatusChange(e.target.value as CaseStatus)}
           className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:border-blue-300"
         >
           {STATUS_OPTIONS.map((s) => (

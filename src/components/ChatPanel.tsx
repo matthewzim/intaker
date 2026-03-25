@@ -1,12 +1,17 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { Message, MessageSender } from "@/lib/types";
+import {
+  listMessages,
+  addMessage,
+  getIntakeResponse,
+  analyzeCase,
+} from "@/lib/clientStore";
 
 interface ChatPanelProps {
   caseId: string;
   sender: MessageSender;
-  /** If true, auto-trigger analysis after enough messages */
   enableAutoAnalysis?: boolean;
   onAnalysisComplete?: () => void;
 }
@@ -24,23 +29,11 @@ export default function ChatPanel({
   const [analysisTriggered, setAnalysisTriggered] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const fetchMessages = useCallback(async () => {
-    const res = await fetch(`/api/cases/${caseId}/messages`);
-    if (res.ok) {
-      const data = await res.json();
-      setMessages(data);
-    }
+  useEffect(() => {
+    setMessages(listMessages(caseId));
   }, [caseId]);
 
   useEffect(() => {
-    fetchMessages();
-    // Poll for new messages every 3 seconds
-    const interval = setInterval(fetchMessages, 3000);
-    return () => clearInterval(interval);
-  }, [fetchMessages]);
-
-  useEffect(() => {
-    // Auto-scroll to bottom
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
@@ -55,18 +48,18 @@ export default function ChatPanel({
     }
   }, [messages, enableAutoAnalysis, analysisTriggered]);
 
-  const triggerAnalysis = async () => {
+  const triggerAnalysis = () => {
     setAnalysisTriggered(true);
     setAnalyzing(true);
     try {
-      await fetch(`/api/cases/${caseId}/analyze`, { method: "POST" });
+      analyzeCase(caseId);
       onAnalysisComplete?.();
     } finally {
       setAnalyzing(false);
     }
   };
 
-  const sendMessage = async (e: React.FormEvent) => {
+  const sendMessage = (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || loading) return;
 
@@ -75,19 +68,17 @@ export default function ChatPanel({
     setLoading(true);
 
     try {
-      const res = await fetch(`/api/cases/${caseId}/messages`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content, sender }),
-      });
+      const userMsg = addMessage(caseId, content, sender);
+      const updated = [...messages, userMsg];
 
-      if (res.ok) {
-        const data = await res.json();
-        setMessages((prev) => {
-          const updated = [...prev, data.message];
-          if (data.ai_response) updated.push(data.ai_response);
-          return updated;
-        });
+      // Generate AI response when client sends a message
+      if (sender === "client") {
+        const clientCount = updated.filter((m) => m.sender === "client").length;
+        const aiText = getIntakeResponse(clientCount);
+        const aiMsg = addMessage(caseId, aiText, "ai");
+        setMessages([...updated, aiMsg]);
+      } else {
+        setMessages(updated);
       }
     } finally {
       setLoading(false);
